@@ -443,6 +443,13 @@ def make_claude(settings) -> ClaudeService:
     fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
     if getattr(settings, "fake_mode", False):
         return ClaudeService(fake_mode=True, fixtures_dir=fixtures_dir)
+    if getattr(settings, "inference_provider", "anthropic") == "local":
+        from .local_inference import LocalInferenceService
+        return LocalInferenceService(
+            base_url=getattr(settings, "local_base_url", ""),
+            model=getattr(settings, "local_model", ""),
+            api_key=getattr(settings, "local_api_key", None),
+        )
     return ClaudeService(
         api_key=getattr(settings, "anthropic_api_key", None),
         fake_mode=False,

@@ -28,7 +28,14 @@ class Settings:
         fake_mode: bool | None = None,
         host: str | None = None,
         port: int | None = None,
+        inference_provider: str | None = None,
+        local_base_url: str | None = None,
+        local_model: str | None = None,
     ) -> None:
+        self.inference_provider = inference_provider or os.environ.get("TAILORED_PROVIDER", "anthropic")
+        self.local_base_url = local_base_url if local_base_url is not None else os.environ.get("AMELIA_LLM_BASE_URL", "")
+        self.local_model = local_model if local_model is not None else os.environ.get("AMELIA_LLM_MODEL", "")
+        self.local_api_key = os.environ.get("AMELIA_LLM_API_KEY") or None
         if anthropic_api_key is _UNSET:
             self.anthropic_api_key: str | None = os.environ.get("ANTHROPIC_API_KEY") or None
         else:

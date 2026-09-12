@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   buildProfile,
@@ -16,6 +16,7 @@ import {
 import type { VaultDocument } from "../api";
 import type { ApplicationDetail, ProfileSummary } from "../types";
 
+import type { ConversationMessage } from "../components/AmeliaConversation";
 import AmeliaConversation from "../components/AmeliaConversation";
 import AmeliaChatWorkspace from "../components/AmeliaChatWorkspace";
 import type { SourceFile } from "../components/AmeliaChatWorkspace";
@@ -23,7 +24,7 @@ import type { SourceFile } from "../components/AmeliaChatWorkspace";
 const ACCESS_CODE = "Home";
 
 type FlowStep = 2 | 3 | 4;
-type ChatMessage = { role: "user" | "amelia"; text: string };
+
 
 function AmeliaLogo() {
   return (
@@ -41,7 +42,7 @@ function AmeliaLogo() {
 function SidebarNavigation({ step, onSelect }: { step: FlowStep; onSelect: (step: FlowStep) => void }) {
   return (
     <nav className="amelia-sidebar-nav" aria-label="Resume workspace">
-      {([{ step: 2, label: "Build Resume", icon: "▧" }, { step: 3, label: "Chat", icon: "▤" }, { step: 4, label: "Document Vault", icon: "▱" }] as const).map((item) => (
+      {([{ step: 2, label: "Resume Builder", icon: "▧" }, { step: 3, label: "Resume Chat", icon: "▤" }, { step: 4, label: "Document Vault", icon: "▱" }] as const).map((item) => (
         <button type="button" className={item.step === step ? "is-current" : ""}
           key={item.step} aria-current={item.step === step ? "page" : undefined}
           onClick={() => onSelect(item.step)}>
@@ -68,7 +69,13 @@ export default function AmeliaFlowScreen() {
   const wordCount = [resumeText, jobText, ...sources.map((source) => source.text)].join(" ").trim().split(/\s+/).filter(Boolean).length;
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<ConversationMessage[]>([]);
+  const [replyPending, setReplyPending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<{ id: number; version: number; rawText: string; started: number } | null>(null);
+  const interruptedRequest = useRef<typeof pendingRequest>(null);
+  const sending = useRef(false);
+  const lastRequest = useRef("");
   const [documents, setDocuments] = useState<VaultDocument[]>([]);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [resumeVaultId, setResumeVaultId] = useState<string | null>(null);
@@ -84,12 +91,48 @@ export default function AmeliaFlowScreen() {
   }, []);
 
   useEffect(() => {
-    if (!application || application.status === "ready" || application.status === "error") return;
-    const timer = window.setTimeout(() => {
-      getApplication(application.id).then(setApplication).catch((e) => setError(String(e)));
-    }, 2000);
-    return () => window.clearTimeout(timer);
-  }, [application]);
+    if (!pendingRequest) return;
+    interruptedRequest.current = pendingRequest;
+    let cancelled = false;
+    let timer: number;
+    async function poll() {
+      try {
+        const next = await getApplication(pendingRequest!.id);
+        if (cancelled) return;
+        setApplication(next);
+        if (next.status === "ready" && next.version >= pendingRequest!.version) {
+          setChatMessages((messages) => [...messages, {
+            role: "amelia",
+            text: next.tailoring_notes || next.resume?.summary || "Your updated resume is ready. What would you like to refine next?",
+            application: next,
+            rawText: pendingRequest!.rawText,
+          }]);
+          interruptedRequest.current = null;
+          setReplyPending(false);
+          setPendingRequest(null);
+          sending.current = false;
+          return;
+        }
+        if (next.status === "error" || next.status === "needs_paste") {
+          interruptedRequest.current = null;
+          throw new Error(next.error_message || "The job link could not be read. Add the job description text in Build Resume, then retry.");
+        }
+        if (Date.now() - pendingRequest!.started > 300000) {
+          throw new Error("The reply is taking longer than expected. Retry to check its progress.");
+        }
+        timer = window.setTimeout(poll, 1500);
+      } catch (e) {
+        if (!cancelled) {
+          setReplyError(String(e));
+          setReplyPending(false);
+          setPendingRequest(null);
+          sending.current = false;
+        }
+      }
+    }
+    timer = window.setTimeout(poll, 500);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [pendingRequest]);
 
   useEffect(() => {
     if (!unlocked || step !== 4) return;
@@ -163,11 +206,20 @@ export default function AmeliaFlowScreen() {
     finally { setUploading(false); }
   }
 
-  async function buildResume() {
+  async function buildResume(requestText = "Build a tailored resume from my uploaded experience and target role.", retry = false) {
     if (!resumeFile || (!jobText.trim() && !/^https?:\/\//i.test(jobUrl.trim()))) {
       setError("Add a resume file and a job description before continuing.");
       return;
     }
+    if (sending.current) return;
+    sending.current = true;
+    lastRequest.current = requestText;
+    setReplyPending(true);
+    setReplyError(null);
+    setStep(3);
+    if (!retry) setChatMessages((messages) => [...messages, { role: "user", text: requestText,
+      files: [resumeFile, ...sources.map((source) => source.file), jobFile].filter((file): file is File => file !== null).map((file) => ({ name: file.name, size: file.size })) }]);
+    setFeedback("");
     setBusy(true);
     setError(null);
     try {
@@ -196,41 +248,56 @@ export default function AmeliaFlowScreen() {
         "slate",
         !jobText.trim()
       );
-      const description = targetTitle.trim() ? `Preferred target role: ${targetTitle.trim()}\n\n${jobText}` : jobText;
+      const description = `Resume request: ${requestText}\nPreferred target role: ${targetTitle.trim()}\n\n${jobText}`;
       const queued = jobText.trim() ? await pasteJobText(created.id, description) : created;
       setApplication(queued);
-      setStep(3);
+      setPendingRequest({ id: queued.id, version: queued.version, rawText: resumeText || sources[0]?.text || "", started: Date.now() });
     } catch (e) {
-      setError(String(e));
+      setReplyError(String(e));
+      setReplyPending(false);
+      sending.current = false;
     } finally {
       setBusy(false);
     }
   }
 
-  async function sendFeedback() {
-    if (!application || !feedback.trim()) return;
-    const message = feedback.trim();
-    if (application.status !== "ready") {
-      setError("Wait for the current draft to finish before sending another refinement.");
+  async function sendFeedback(retry = false) {
+    const message = retry ? lastRequest.current : feedback.trim();
+    if (!message || sending.current || busy || uploading) return;
+    if (retry && interruptedRequest.current) {
+      sending.current = true;
+      setReplyPending(true);
+      setReplyError(null);
+      setPendingRequest({ ...interruptedRequest.current, started: Date.now() });
       return;
     }
-    setBusy(true);
+    if (!application || application.status === "needs_paste" || (!application.parsed && application.status === "error")) {
+      await buildResume(message, retry);
+      return;
+    }
+    // Resume polling after a connection failure without launching duplicate work.
+    if (!["ready", "error"].includes(application.status)) {
+      sending.current = true;
+      setReplyPending(true);
+      setReplyError(null);
+      setPendingRequest({ id: application.id, version: application.version, rawText: resumeText, started: Date.now() });
+      return;
+    }
+    sending.current = true;
+    lastRequest.current = message;
+    setReplyPending(true);
+    setReplyError(null);
     setError(null);
-    setChatMessages((messages) => [...messages, { role: "user", text: message }]);
+    if (!retry) setChatMessages((messages) => [...messages, { role: "user", text: message }]);
     setFeedback("");
     try {
       const next = await regenerate(application.id, message);
-      setApplication(next);
-      setChatMessages((messages) => [
-        ...messages,
-        { role: "amelia", text: "Got it. I am refining the draft now." },
-      ]);
+      setApplication({ ...next, status: "queued" });
+      setPendingRequest({ id: application.id, version: application.version + 1, rawText: resumeText || sources[0]?.text || "", started: Date.now() });
     } catch (e) {
-      setChatMessages((messages) => messages.slice(0, -1));
-      setFeedback(message);
-      setError(String(e));
-    } finally {
-      setBusy(false);
+      setReplyError(String(e));
+      setReplyPending(false);
+      sending.current = false;
     }
   }
 
@@ -267,7 +334,13 @@ export default function AmeliaFlowScreen() {
   }
 
   return (
-    <main className="amelia-shell amelia-workspace">
+    <main className={`amelia-shell amelia-workspace ${step === 3 ? "amelia-chat-desktop" : ""}`}>
+      {step === 3 && <header className="amelia-desktop-header">
+        <button className="amelia-wordmark" onClick={() => setStep(2)}><AmeliaLogo /></button>
+        <span className="amelia-desktop-breadcrumb">› <b>Profile &amp; Resume Intelligence</b></span>
+        <button className="amelia-desktop-vault" onClick={() => setStep(4)}>▱ Document Vault</button>
+        <span className="amelia-desktop-profile">{profile?.contact?.name || profile?.name || "Your workspace"}</span>
+      </header>}
       <aside className="amelia-sidebar" aria-label="Workspace sidebar">
         <button className="amelia-wordmark" aria-label="Amelia home" onClick={() => setStep(2)}><AmeliaLogo /></button>
         <p className="amelia-sidebar-caption">CAREER CO-PILOT</p>
@@ -327,7 +400,8 @@ export default function AmeliaFlowScreen() {
         <AmeliaConversation logo={<AmeliaLogo />} application={application} targetTitle={targetTitle}
           files={[resumeFile, ...sources.map((source) => source.file), jobFile].filter((file): file is File => file !== null)}
           wordCount={wordCount} rawText={resumeText || sources[0]?.text || ""}
-          feedback={feedback} messages={chatMessages} busy={busy}
+          feedback={feedback} messages={chatMessages} busy={busy || uploading}
+          replyPending={replyPending} replyError={replyError} onRetry={() => { void sendFeedback(true); }}
           onFeedback={setFeedback} onSend={() => { void sendFeedback(); }}
           onBuild={() => setStep(2)} onVault={() => setStep(4)}
           onDocument={() => { if (application) navigate(`/applications/${application.id}`); }} />

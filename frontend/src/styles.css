@@ -806,3 +806,103 @@ body:has(.amelia-shell) { background: #465ba1; }
   .conversation-agent, .conversation-user, .conversation-resume-card { padding: 0.65rem; }
   .conversation-insights { grid-template-columns: 1fr; }
 }
+
+/* Scale only the login contents; zoom reserves their enlarged layout space. */
+.amelia-gate { gap: 1.43rem; }
+.amelia-gate > .amelia-logo,
+.amelia-gate > h1,
+.amelia-gate > .amelia-login-panel { zoom: 1.3; }
+
+/* A wide conversation that grows one completed turn at a time. */
+.amelia-conversation-view { width: min(100%, 980px); }
+.conversation-thread { padding: 0 1.5rem 1.25rem; }
+.conversation-user { width: fit-content; max-width: 78%; margin: 0 0 1.4rem auto; min-width: 0; }
+.conversation-agent { max-width: 88%; margin-right: auto; }
+.conversation-message-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-agent > .conversation-message-text { margin-bottom: 1rem; }
+.conversation-empty { padding: clamp(1rem, 5vw, 4rem) 1rem; text-align: center; color: #66758e; }
+.conversation-empty h1 { color: #263650; font-size: 1.6rem; }
+.conversation-empty button, .conversation-reply-error button { padding: 0.6rem 0.9rem; border: 0; border-radius: 0.6rem; background: #5945ef; color: #fff; cursor: pointer; }
+.conversation-typing { display: flex; align-items: center; gap: 0.7rem; margin: 1rem 0; color: #687696; font-size: 0.85rem; }
+.conversation-typing-dots { color: #5945ef; letter-spacing: 0.15rem; }
+.conversation-reply-error { padding: 1rem; margin: 1rem 0; border: 1px solid #efb9c2; border-radius: 0.8rem; background: #fff3f5; color: #9f2941; font-size: 0.85rem; overflow-wrap: anywhere; }
+.conversation-reply-error p { margin-top: 0; }
+@media (max-width: 760px) {
+  .conversation-thread { padding: 0 0.65rem 0.75rem; }
+  .conversation-user, .conversation-agent { max-width: 100%; }
+}
+
+/* Desktop resume chat: a light canvas with a persistent composer. */
+.amelia-chat-desktop { grid-template-rows: 72px minmax(0, 1fr); background: #f7f8ff; }
+.amelia-desktop-header { grid-column: 1 / -1; display: flex; align-items: center; gap: 1.5rem; padding: 0.8rem 1.5rem; background: #fff; color: #18283e; border-bottom: 1px solid #f0f1f8; }
+.amelia-desktop-header .amelia-logo { padding: 0; background: transparent; color: #18283e; font-size: 1rem; }
+.amelia-desktop-header .amelia-logo-symbol { background: transparent; box-shadow: none; width: 1.4rem; height: 1.4rem; }
+.amelia-desktop-header .amelia-logo b { background: #e8e2ff; color: #3b26b2; border: 0; border-radius: 0.25rem; }
+.amelia-desktop-breadcrumb { font-size: 0.8rem; }
+.amelia-desktop-breadcrumb b { margin-left: 0.3rem; padding: 0.3rem; color: #4730de; background: #f0f3ff; border-radius: 0.25rem; font-weight: 500; }
+.amelia-desktop-vault { margin-left: auto; background: #edf2ff; color: #273650; border: 0; border-radius: 0.5rem; padding: 0.55rem; cursor: pointer; }
+.amelia-desktop-profile { font-size: 0.8rem; padding: 0.65rem; border-radius: 999px; background: #f0f4ff; }
+.amelia-chat-desktop > .amelia-sidebar { height: calc(100vh - 72px); top: 0; }
+.amelia-chat-desktop > .amelia-sidebar > .amelia-wordmark { display: none; }
+.amelia-chat-desktop .amelia-sidebar-caption { margin-top: 1rem; }
+.amelia-chat-desktop .amelia-workspace-content { max-width: none; padding: 0; background: #f7f8ff; }
+.amelia-chat-desktop .amelia-conversation-view { width: 100%; min-height: calc(100vh - 72px); border: 0; border-radius: 0; background: #f7f8ff; color: #17283e; }
+.amelia-chat-desktop .conversation-target { margin: 0; padding: 0.75rem 1.5rem; border: 0; border-bottom: 1px solid #ebeefa; border-radius: 0; background: #fdfdff; }
+.amelia-chat-desktop .conversation-target > span { padding: 0.35rem; }
+.amelia-chat-desktop .conversation-target > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.6rem; padding: 0.35rem 0.6rem; background: #edeaff; border-radius: 999px; }
+.amelia-chat-desktop .conversation-target small { color: #4931df; font-size: 0.7rem; }
+.amelia-chat-desktop .conversation-target strong { font-size: 0.95rem; font-weight: 600; }
+.amelia-chat-desktop .conversation-thread { display: flex; flex-direction: column; max-width: 1160px; min-height: calc(100vh - 140px); margin: 0 auto; padding: 1rem 1.5rem 0; }
+.amelia-chat-desktop .conversation-user { width: min(100%, 760px); max-width: 82%; margin-bottom: 2rem; padding: 1rem; background: #eef2ff; color: #273650; border-radius: 1.2rem 0.25rem 1.2rem 1.2rem; }
+.conversation-feed-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; }
+.conversation-feed-heading strong { font-size: 0.65rem; color: #4731db; font-weight: 600; }
+.conversation-feed-heading small { font-family: var(--font-mono); font-size: 0.7rem; }
+.amelia-chat-desktop .conversation-attachments { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0.8rem; padding-top: 0; border: 0; }
+.amelia-chat-desktop .conversation-attachments > div { background: #fff; border: 1px solid #e3e9ff; }
+.amelia-chat-desktop .conversation-agent-label { margin: 0.5rem 0 0.7rem; }
+.amelia-chat-desktop .conversation-agent-label .amelia-logo { font-size: 1rem; }
+.amelia-chat-desktop .conversation-agent-label > span:last-child { background: #d8d0ff; color: #574e96; }
+.amelia-chat-desktop .conversation-agent { max-width: 100%; padding: 1.5rem; background: #fff; color: #192b46; border-radius: 0.3rem 1.2rem 1.2rem 1.2rem; }
+.amelia-chat-desktop .conversation-message-text { font-size: 1rem; line-height: 1.65; }
+.amelia-chat-desktop .conversation-resume-card { background: transparent; padding: 0; color: #17283e; }
+.amelia-chat-desktop .conversation-resume-card > header { background: #edf2ff; padding: 1rem; border-radius: 0.9rem; }
+.amelia-chat-desktop .conversation-resume-card > header > span { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; color: #5744ee; background: #fff; }
+.amelia-chat-desktop .conversation-resume-card header strong { font-size: 1rem; }
+.amelia-chat-desktop .conversation-resume-card header small { font-size: 0.75rem; }
+.amelia-chat-desktop .conversation-resume-card header b { max-width: 9rem; background: #5842ed; color: #fff; border-radius: 999px; font-size: 0.65rem; padding: 0.35rem 0.6rem; }
+.amelia-chat-desktop .conversation-transformation { border: 0; margin: 1.25rem 0; padding: 0; }
+.amelia-chat-desktop .conversation-transformation h3 { color: #20344d; font-size: 0.75rem; }
+.conversation-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: start; margin-bottom: 1rem; }
+.amelia-chat-desktop .conversation-raw, .amelia-chat-desktop .conversation-optimized { border: 0; padding: 1rem; margin: 0; }
+.amelia-chat-desktop .conversation-raw { background: #fff7f7; }
+.amelia-chat-desktop .conversation-optimized { background: #f6f3ff; }
+.amelia-chat-desktop .conversation-transformation p { font-size: 0.9rem; }
+.amelia-chat-desktop .conversation-raw p { color: #656278; }
+.amelia-chat-desktop .conversation-transformation h4 { font-size: 0.65rem; }
+.amelia-chat-desktop .conversation-keywords span { background: #e7efff; border: 0; color: #263650; font-size: 0.8rem; padding: 0.2rem 0.65rem; border-radius: 0.5rem; }
+.conversation-document-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.amelia-chat-desktop .conversation-pdf, .amelia-chat-desktop .conversation-edit { width: auto; padding: 0.8rem 1rem; font-size: 0.85rem; margin: 0; border: 0; }
+.amelia-chat-desktop .conversation-pdf { background: #5943ec; }
+.amelia-chat-desktop .conversation-edit { background: #e7eeff; color: #263650; }
+.conversation-compose-area { position: sticky; bottom: 0; margin-top: auto; padding: 1.25rem 0; background: #f7f8fff5; }
+.amelia-chat-desktop .conversation-prompts { margin: 0 0 0.65rem; }
+.amelia-chat-desktop .conversation-prompts > small { display: none; }
+.amelia-chat-desktop .conversation-prompts > div { margin: 0; }
+.amelia-chat-desktop .conversation-composer { padding: 0.65rem; border: 0; border-radius: 1rem; }
+.amelia-chat-desktop .conversation-composer input { font-size: 0.9rem; }
+.amelia-chat-desktop .conversation-composer button { font-size: 1.1rem; background: #e7eeff; color: #38425e; }
+.amelia-chat-desktop .conversation-composer button:last-child { background: #5943ec; color: #fff; }
+.amelia-desktop-header button:focus-visible { outline-color: #5943ec; }
+@media (max-width: 760px) {
+  .amelia-desktop-header { gap: 0.5rem; padding: 0.6rem; }
+  .amelia-desktop-breadcrumb { display: none; }
+  .amelia-desktop-profile { display: none; }
+  .amelia-chat-desktop .conversation-thread { padding: 0.75rem 0.65rem 0; }
+  .amelia-chat-desktop .conversation-target { padding: 0.5rem; }
+  .amelia-chat-desktop .conversation-user { max-width: 100%; }
+  .amelia-chat-desktop .conversation-agent { padding: 0.85rem; }
+  .conversation-comparison { grid-template-columns: 1fr; }
+  .amelia-chat-desktop .conversation-attachments { grid-template-columns: 1fr; }
+  .amelia-chat-desktop .conversation-resume-card > header { flex-wrap: wrap; }
+  .amelia-chat-desktop .conversation-target strong { font-size: 0.8rem; }
+}
