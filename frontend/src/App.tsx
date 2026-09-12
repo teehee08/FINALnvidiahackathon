@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import DashboardScreen from "./screens/DashboardScreen";
 import GettingStartedScreen from "./screens/GettingStartedScreen";
 import AddJobsScreen from "./screens/AddJobsScreen";
@@ -7,10 +7,13 @@ import TemplatesScreen from "./screens/TemplatesScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import ApplicationScreen from "./screens/ApplicationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import AmeliaFlowScreen from "./screens/AmeliaFlowScreen";
 import { getThemePref, resolveTheme, setThemePref, subscribeTheme } from "./theme";
 import type { ResolvedTheme } from "./theme";
 
 export default function App() {
+  const location = useLocation();
+  const isAmeliaFlow = location.pathname.startsWith("/amelia");
   const [resolved, setResolved] = useState<ResolvedTheme>(() =>
     resolveTheme(getThemePref())
   );
@@ -24,13 +27,16 @@ export default function App() {
 
   return (
     <>
-      <nav className="nav">
+      {!isAmeliaFlow && <nav className="nav">
         <div className="nav-inner">
           <NavLink to="/" className="nav-brand">
             Tailored
           </NavLink>
           <NavLink to="/getting-started" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Getting Started
+          </NavLink>
+          <NavLink to="/amelia" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+            Amelia flow
           </NavLink>
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Dashboard
@@ -56,11 +62,12 @@ export default function App() {
             {resolved === "dark" ? "☀ Light" : "☾ Dark"}
           </button>
         </div>
-      </nav>
+      </nav>}
       <main className="shell">
         <Routes>
           <Route path="/" element={<DashboardScreen />} />
           <Route path="/getting-started" element={<GettingStartedScreen />} />
+          <Route path="/amelia" element={<AmeliaFlowScreen />} />
           <Route path="/add" element={<AddJobsScreen />} />
           <Route path="/templates" element={<TemplatesScreen />} />
           <Route path="/profiles" element={<ProfileScreen />} />

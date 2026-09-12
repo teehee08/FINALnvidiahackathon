@@ -23,6 +23,7 @@ export default function McpSetup() {
   }, []);
 
   const command = setup?.mcp_command ?? MANUAL_COMMAND;
+  const openshellCommand = setup?.openshell_command ?? "openshell sandbox create --name tailored-agent -- claude";
 
   return (
     <div className="mcp-setup">
@@ -45,6 +46,22 @@ export default function McpSetup() {
         <label className="field-label">1. Register the MCP server</label>
         <pre className="code-block mono">{command}</pre>
         <CopyButton text={command} label="Copy command" />
+      </div>
+      <div className="field">
+        <label className="field-label">Run the agent inside OpenShell</label>
+        {setup?.openshell_available ? (
+          <>
+            <pre className="code-block mono">{openshellCommand}</pre>
+            <CopyButton text={openshellCommand} label="Copy OpenShell command" />
+            <p className="muted">
+              This starts Claude in an isolated OpenShell sandbox and uploads the project source.
+              Register the Tailored MCP server from inside that sandbox before tailoring. Sandbox
+              data is separate from the host database.
+            </p>
+          </>
+        ) : (
+          <p className="muted">OpenShell was not detected on this machine.</p>
+        )}
       </div>
       <div className="field">
         <label className="field-label">2. Ask your agent</label>

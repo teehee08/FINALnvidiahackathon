@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from backend.app.config import Settings
 from backend.app.db import get_engine, init_db
 from backend.app.main import create_app
+from backend.app.api.setup import _openshell_installed
 
 
 def test_setup_returns_running_interpreter_and_command(client):
@@ -27,6 +28,13 @@ def test_setup_returns_running_interpreter_and_command(client):
     assert body["env_line"] == "ANTHROPIC_API_KEY=sk-ant-..."
     assert body["workflow_guide_tool"] == "get_workflow_guide"
     assert isinstance(body["mcp_server_exists"], bool)
+    assert body["openshell_available"] == _openshell_installed()
+    if body["openshell_available"]:
+        assert body["openshell_command"].startswith("openshell sandbox create")
+        assert "Dockerfile.openshell" in body["openshell_command"]
+        assert "--forward 8547" in body["openshell_command"]
+    else:
+        assert body["openshell_command"] == ""
 
 
 def test_setup_never_leaks_api_key_from_constructor(tmp_path):

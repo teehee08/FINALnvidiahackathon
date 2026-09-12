@@ -8,7 +8,7 @@ trafilatura
 jinja2
 markdown
 playwright
-mcp>=2.0
+mcp==2.2.0
 pypdf
 python-docx
 python-multipart

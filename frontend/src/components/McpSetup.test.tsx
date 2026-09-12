@@ -11,6 +11,9 @@ const SETUP = {
   mcp_server_exists: true,
   mcp_command:
     'claude mcp add tailored -- "C:\\proj\\.venv\\Scripts\\python.exe" "C:\\proj\\backend\\mcp_server.py"',
+  openshell_available: true,
+  openshell_command:
+    'openshell sandbox create --name tailored-agent --auto-providers --upload "C:\\proj:/workspace/tailored" -- claude',
   env_line: "ANTHROPIC_API_KEY=sk-ant-...",
   workflow_guide_tool: "get_workflow_guide",
 };
@@ -20,6 +23,7 @@ describe("McpSetup", () => {
     vi.mocked(api.getSetup).mockResolvedValue(SETUP);
     render(<McpSetup />);
     expect(await screen.findByText(SETUP.mcp_command)).toBeInTheDocument();
+    expect(screen.getByText(SETUP.openshell_command)).toBeInTheDocument();
     expect(screen.queryByText(/couldn't find it/i)).not.toBeInTheDocument();
   });
 

@@ -322,6 +322,8 @@ export interface SetupShape {
   mcp_server_path: string;
   mcp_server_exists: boolean;
   mcp_command: string;
+  openshell_available: boolean;
+  openshell_command: string;
   env_line: string;
   workflow_guide_tool: string;
 }
