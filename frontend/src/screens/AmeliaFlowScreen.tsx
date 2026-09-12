@@ -7,45 +7,70 @@ import {
   exportUrl,
   getApplication,
   listProfiles,
+  listVaultDocuments,
+  saveVaultDocument,
   pasteJobText,
   regenerate,
   uploadDocument,
 } from "../api";
+import type { VaultDocument } from "../api";
 import type { ApplicationDetail, ProfileSummary } from "../types";
+
+import AmeliaChatWorkspace from "../components/AmeliaChatWorkspace";
+import type { SourceFile } from "../components/AmeliaChatWorkspace";
 
 const ACCESS_CODE = "Home";
 
-type FlowStep = 1 | 2 | 3;
+type FlowStep = 2 | 3 | 4;
 type ChatMessage = { role: "user" | "amelia"; text: string };
 
-function StepRail({ step }: { step: FlowStep }) {
+function AmeliaLogo() {
   return (
-    <div className="amelia-steps" aria-label="Resume workflow">
-      {["Secure entry", "Build dossier", "Refine resume"].map((label, index) => {
-        const number = (index + 1) as FlowStep;
-        return (
-          <div className={`amelia-step ${number <= step ? "is-current" : ""}`} key={label}>
-            <span>{number}</span>
-            <small>{label}</small>
-          </div>
-        );
-      })}
-    </div>
+    <span className="amelia-logo">
+      <svg className="amelia-logo-symbol" viewBox="35 35 565 525" aria-hidden="true" focusable="false">
+        <path fill="#334394" d="M327 40 C378 37 406 57 430 108 L584 458 C600 488 598 510 580 529 C563 548 538 553 506 553 L485 553 C450 553 433 543 420 518 L306 260 Z" />
+        <path fill="#222955" d="M316 278 C336 335 358 358 407 378 C472 405 558 423 584 458 C602 482 598 510 580 529 C563 548 538 553 506 553 L485 553 C450 553 433 543 420 518 Z" />
+        <path fill="#465BA1" d="M327 40 C357 38 379 44 391 55 C419 81 383 157 360 202 L209 511 C195 540 173 553 136 554 L115 554 C83 553 63 546 50 526 C36 506 41 486 51 465 L238 100 C257 60 281 41 327 40 Z" />
+      </svg>
+      <span className="amelia-logo-name">Amelia AI <b>PRO</b></span>
+    </span>
+  );
+}
+
+function StepRail({ step, onSelect }: { step: FlowStep; onSelect: (step: FlowStep) => void }) {
+  return (
+    <nav className="amelia-steps" aria-label="Resume workspace">
+      {([{ step: 2, label: "Build resume" }, { step: 3, label: "Chat" }, { step: 4, label: "Document Vault" }] as const).map((item) => (
+        <button type="button" className={`amelia-step ${item.step === step ? "is-current" : ""}`}
+          key={item.step} aria-current={item.step === step ? "page" : undefined}
+          onClick={() => onSelect(item.step)}>
+          <small>{item.label}</small>
+        </button>
+      ))}
+    </nav>
   );
 }
 
 export default function AmeliaFlowScreen() {
-  const [step, setStep] = useState<FlowStep>(1);
+  const [step, setStep] = useState<FlowStep>(2);
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("amelia-unlocked") === "1");
   const [accessCode, setAccessCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [profile, setProfile] = useState<ProfileSummary | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [jobFile, setJobFile] = useState<File | null>(null);
   const [jobText, setJobText] = useState("");
   const [jobUrl, setJobUrl] = useState("");
+  const [targetTitle, setTargetTitle] = useState("");
+  const [sources, setSources] = useState<SourceFile[]>([]);
+  const [resumeText, setResumeText] = useState("");
+  const wordCount = [resumeText, jobText, ...sources.map((source) => source.text)].join(" ").trim().split(/\s+/).filter(Boolean).length;
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [feedback, setFeedback] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [documents, setDocuments] = useState<VaultDocument[]>([]);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -62,6 +87,17 @@ export default function AmeliaFlowScreen() {
     return () => window.clearTimeout(timer);
   }, [application]);
 
+  useEffect(() => {
+    if (!unlocked || step !== 4) return;
+    let cancelled = false;
+    setVaultLoading(true);
+    listVaultDocuments()
+      .then((items) => { if (!cancelled) setDocuments(items); })
+      .catch((e) => { if (!cancelled) setError(String(e)); })
+      .finally(() => { if (!cancelled) setVaultLoading(false); });
+    return () => { cancelled = true; };
+  }, [step, unlocked]);
+
   function unlock() {
     if (accessCode.trim().toLowerCase() !== ACCESS_CODE.toLowerCase()) {
       setError("That access code did not match.");
@@ -72,14 +108,45 @@ export default function AmeliaFlowScreen() {
     setError(null);
   }
 
-  async function readJobFile(file: File | null) {
+  async function saveUpload(file: File | null, category: "Resume" | "Job description") {
     if (!file) return;
-    setJobFile(file);
-    setJobText(await file.text());
+    if (file.size > 25 * 1024 * 1024) { setError("Each file must be 25 MB or smaller."); return; }
+    setUploading(true);
+    setError(null);
+    try {
+      const saved = await saveVaultDocument(file, category);
+      setDocuments((items) => [saved, ...items]);
+      if (category === "Resume") { setResumeFile(file); setResumeText(saved.text); }
+      else {
+        setJobFile(file);
+        setJobText(saved.text);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUploading(false);
+    }
   }
 
-  async function buildDossier() {
-    if (!resumeFile || !jobText.trim()) {
+  async function saveSources(files: File[]) {
+    if (uploading || busy) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of files) {
+        if (file.size > 25 * 1024 * 1024 || !/\.(pdf|docx|txt|md)$/i.test(file.name)) {
+          throw new Error("Use PDF, DOCX, TXT, or MD files up to 25 MB.");
+        }
+        const saved = await saveVaultDocument(file, "Coursework");
+        setDocuments((items) => [saved, ...items]);
+        setSources((items) => [...items, { id: saved.id, file, text: saved.text }]);
+      }
+    } catch (e) { setError(String(e)); }
+    finally { setUploading(false); }
+  }
+
+  async function buildResume() {
+    if (!resumeFile || (!jobText.trim() && !/^https?:\/\//i.test(jobUrl.trim()))) {
       setError("Add a resume file and a job description before continuing.");
       return;
     }
@@ -102,15 +169,17 @@ export default function AmeliaFlowScreen() {
         });
       }
       await uploadDocument(profileId, resumeFile);
+      for (const source of sources) await uploadDocument(profileId, source.file);
       await buildProfile(profileId);
       const [created] = await createApplications(
         profileId,
         [{ url: jobUrl.trim() || "https://local.test/job-description", depth: "standard", template: "slate" }],
         "standard",
         "slate",
-        false
+        !jobText.trim()
       );
-      const queued = await pasteJobText(created.id, jobText);
+      const description = targetTitle.trim() ? `Preferred target role: ${targetTitle.trim()}\n\n${jobText}` : jobText;
+      const queued = jobText.trim() ? await pasteJobText(created.id, description) : created;
       setApplication(queued);
       setStep(3);
     } catch (e) {
@@ -150,29 +219,30 @@ export default function AmeliaFlowScreen() {
   if (!unlocked) {
     return (
       <main className="amelia-shell amelia-gate">
-        <div className="amelia-brand-mark" aria-hidden="true">A</div>
-        <p className="amelia-kicker">AMELIA AI <b>PRO</b></p>
-        <h1>Your strategic career builder</h1>
+        <AmeliaLogo />
+        <h1>Your Strategic Career &amp; Resume Builder</h1>
         <div className="amelia-panel amelia-login-panel">
-          <p className="amelia-eyebrow">PRIVATE WORKSPACE</p>
-          <h2>Welcome back, Maya</h2>
-          <p className="amelia-muted">Your dossier stays on this local machine.</p>
-          <label className="amelia-label" htmlFor="access-code">Keyword: Home</label>
+          <h2>Welcome back Maya</h2>
+          <p className="amelia-muted">Sign in to resume targeting your dream roles</p>
+          <label className="amelia-label" htmlFor="access-code">Keyword : Home</label>
           <div className="amelia-input-wrap">
+            <svg className="amelia-login-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>
             <input
               id="access-code"
               className="amelia-input"
-              type="password"
-              placeholder="Enter access code"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              placeholder="Enter Password"
               value={accessCode}
               onChange={(e) => setAccessCode(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && unlock()}
             />
-            <span aria-hidden="true">◉</span>
+            <button type="button" className="amelia-password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>
+              <svg className="amelia-login-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+            </button>
           </div>
-          <button className="amelia-primary" onClick={unlock}>Enter Amelia <span>→</span></button>
+          <button className="amelia-primary" onClick={unlock}>Log in to Amelia <span>→</span></button>
           {error && <p className="amelia-error">{error}</p>}
-          <p className="amelia-footnote">Local prototype gate. Add server authentication before exposing this app beyond your machine.</p>
         </div>
       </main>
     );
@@ -181,25 +251,53 @@ export default function AmeliaFlowScreen() {
   return (
     <main className="amelia-shell amelia-workspace">
       <header className="amelia-topbar">
-        <button className="amelia-wordmark" onClick={() => setStep(1)}><span>A</span> Amelia AI <b>PRO</b></button>
+        <button className="amelia-wordmark" onClick={() => setStep(2)}><AmeliaLogo /></button>
         <button className="amelia-quiet" onClick={() => { sessionStorage.removeItem("amelia-unlocked"); setUnlocked(false); }}>Lock</button>
       </header>
-      <StepRail step={step} />
+      <StepRail step={step} onSelect={(previous) => { setStep(previous); setError(null); }} />
       {error && <div className="amelia-error amelia-alert">{error}</div>}
 
-      {step === 1 && (
-        <section className="amelia-hero-panel">
-          <p className="amelia-eyebrow">BUILD YOUR DOSSIER</p>
-          <h1>Bring the evidence.<br />We&apos;ll shape the story.</h1>
-          <p className="amelia-muted">One local workspace for your resume, your target role, and the details that make you unmistakable.</p>
-          <button className="amelia-primary" onClick={() => setStep(2)}>Start a new dossier <span>→</span></button>
+      {step === 4 && (
+        <section className="amelia-panel amelia-vault">
+          <p className="amelia-eyebrow">YOUR DOCUMENTS</p>
+          <h1>Document Vault</h1>
+          <p className="amelia-muted">Your uploaded resumes and job descriptions, saved across visits.</p>
+          {vaultLoading ? <p role="status">Loading documents...</p> : documents.length === 0 ? (
+            <div className="amelia-vault-empty">
+              <p>No uploaded files yet.</p>
+              <button className="amelia-primary" onClick={() => setStep(2)}>Upload your first document</button>
+            </div>
+          ) : (
+            <ul className="amelia-vault-list">
+              {documents.map((document) => (
+                <li key={document.id}>
+                  <div><strong>{document.filename}</strong><small>{document.category} · {new Date(document.created_at).toLocaleDateString()}</small></div>
+                  <a href={`/api/vault/${document.id}/download`} download>
+                    {document.original_available ? "Download" : "Download saved text"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
+      {step === 3 && (
+        <AmeliaChatWorkspace sources={sources} resumeFile={resumeFile} jobFile={jobFile}
+          jobText={jobText} jobUrl={jobUrl} targetTitle={targetTitle} wordCount={wordCount}
+          busy={busy || Boolean(application && !["ready", "error", "not_started"].includes(application.status))} uploading={uploading}
+          onSources={(files) => { void saveSources(files); }}
+          onRemoveSource={(id) => setSources((items) => items.filter((item) => item.id !== id))}
+          onResume={(file) => { void saveUpload(file, "Resume"); }}
+          onJob={(file) => { void saveUpload(file, "Job description"); }}
+          onJobText={setJobText} onJobUrl={setJobUrl} onTargetTitle={setTargetTitle}
+          onBuild={() => { void buildResume(); }} />
+      )}
+
       {step === 2 && (
-        <section className="amelia-dossier-grid">
+        <section className="amelia-resume-grid">
           <div>
-            <p className="amelia-eyebrow">STEP 02 / DOSSIER</p>
+            <p className="amelia-eyebrow">BUILD YOUR RESUME</p>
             <h1>Give Amelia<br />the raw material.</h1>
             <p className="amelia-muted">Upload the resume you have today and the job description you want to win. The generator selects from your evidence and keeps the write path truthful.</p>
           </div>
@@ -209,65 +307,31 @@ export default function AmeliaFlowScreen() {
               <strong>{resumeFile ? resumeFile.name : "Upload your resume"}</strong>
               <small>PDF, DOCX, or TXT</small>
             </label>
-            <input id="resume-file" type="file" accept=".pdf,.docx,.txt" onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)} hidden />
+            <input id="resume-file" type="file" accept=".pdf,.docx,.txt" disabled={uploading || busy} onChange={(e) => { void saveUpload(e.target.files?.[0] ?? null, "Resume"); e.target.value = ""; }} hidden />
             <label className="amelia-upload" htmlFor="job-file">
               <span className="amelia-upload-icon">↑</span>
               <strong>{jobFile ? jobFile.name : "Upload the job description"}</strong>
               <small>Or paste it below</small>
             </label>
-            <input id="job-file" type="file" accept=".txt,.pdf,.docx" onChange={(e) => readJobFile(e.target.files?.[0] ?? null)} hidden />
+            <input id="job-file" type="file" accept=".txt,.pdf,.docx" disabled={uploading || busy} onChange={(e) => { void saveUpload(e.target.files?.[0] ?? null, "Job description"); e.target.value = ""; }} hidden />
             <input className="amelia-input" placeholder="https://company.com/jobs/target-role" value={jobUrl} onChange={(e) => setJobUrl(e.target.value)} />
             <textarea className="amelia-textarea" placeholder="Paste the full job description here..." value={jobText} onChange={(e) => setJobText(e.target.value)} />
-            <button className="amelia-primary" onClick={buildDossier} disabled={busy}>{busy ? "Building dossier..." : "Synthesize my resume →"}</button>
+            <button className="amelia-primary" onClick={buildResume} disabled={busy || uploading}>{uploading ? "Saving document..." : busy ? "Building resume..." : "Synthesize my resume →"}</button>
           </div>
         </section>
       )}
 
       {step === 3 && application && (
-        <section className="amelia-chat-page">
-          <header className="amelia-chat-header">
-            <button className="amelia-wordmark" onClick={() => setStep(1)}><span>A</span> Amelia AI <b>PRO</b><small>Resume Strategist</small></button>
-            <div className="amelia-header-actions"><button aria-label="Share">⇧</button><button aria-label="More">⋮</button><button aria-label="Profile">●</button></div>
-          </header>
-          <div className="amelia-target-card">
-            <span className="amelia-target-icon">▣</span>
-            <div><small>TARGET ROLE <i /></small><strong>{application.title || "Associate Product Manager"}</strong></div>
-            <span className="amelia-match">✦ 96% Match</span>
-          </div>
-          <div className="amelia-conversation">
-            <div className="amelia-user-bubble">
-              Hey Amelia, I uploaded my resume and target job. Can you curate this into a sharp, evidence-backed application?
-              <div className="amelia-attachments">
-                <span>▤ {resumeFile?.name || "Old_Student_CV_2023.pdf"}<small>110 KB</small></span>
-                <span>↗ {jobFile?.name || "PPT.pdf"}<small>64 KB</small></span>
-              </div>
-            </div>
-            <time>10:24 AM ··</time>
-            <div className="amelia-agent-line"><span className="amelia-mini-mark">A</span><strong>Amelia AI</strong><span>● SYNTHESIZING DOSSIER</span></div>
-            <div className="amelia-agent-bubble">
-              I&apos;ve ingested your uploaded sources. Here is your strategic narrative tailored directly to the target role.
-              <div className="amelia-score-card"><div><span>⌁ ATS FIT CALIBRATION</span><strong>96%</strong></div><div className="amelia-score-bar"><i /></div><small>Baseline from raw documents: 61%</small><b>↗ +35% Boost</b></div>
-              <div className="amelia-insight-grid"><div><strong>✦ TOP PILLARS</strong><span>● Product Craft & UX</span><span>● Cross-Functional</span><span>● 0-to-1 User Impact</span></div><div><strong>♧ NOISE FILTERED</strong><span>Stripped generic buzzwords without quantified impact.</span><b>✓ ATS SAFE</b></div></div>
-              <div className="amelia-impact-card">
-                <header><strong>ML</strong><div><b>Maya Lin</b><small>Aspiring Product Manager · BS. CS & Design</small></div><span>NVIDIA<br />ALIGNED</span></header>
-                <label>✦ IMPACT TRANSFORMATION <b>Quantified</b></label>
-                <div className="amelia-raw"><small>× RAW INPUT (INTERNSHIP DRAFT)</small><em>“Helped build mobile feature for student app during internship and coordinated between engineers and design team.”</em></div>
-                <div className="amelia-synthesis"><small>⊕ AMELIA SYNTHESIS (OPTIMIZED)</small><p>“Spearheaded product requirements and developer telemetry for generative AI inference microservice, collaborating with 6 CUDA/PyTorch engineers to cut pipeline latency by 42% and drive a 34% surge in active lab researcher adoption.” <sup>1</sup></p><div className="amelia-citation">↳ Obtained from <button>PPT.pdf · line 7</button></div></div>
-                <small className="amelia-keywords">▣ HIGH-WEIGHT KEYWORDS INJECTED</small><div className="amelia-keyword-list"><b>GPU Acceleration & Inference</b><b>Technical Product Management</b><b>CUDA Ecosystem</b><b>Developer Experience (DevEx)</b></div>
-              </div>
-              {application.status === "ready" && <a className="amelia-pdf-button" href={exportUrl(application.id, "resume.pdf")} download>▣ Inspect Full-Page Resume (PDF)</a>}
-              <button className="amelia-tune-button" onClick={() => navigate(`/applications/${application.id}`)}>☷ Fine-tune Sections with Amelia</button>
-            </div>
-            <div className="amelia-agent-bubble amelia-question">I spotlighted your hands-on execution and technical empathy. Would you like to emphasize your CUDA/AI infrastructure projects next, or prep behavioral STAR talking points?</div>
-            <time>10:25 AM · <b>● READY FOR INPUT</b></time>
-            <div className="amelia-suggested"><small>⌘ SUGGESTED PROMPTS</small><div><button onClick={() => setFeedback("Amplify my NVIDIA AI platform sense")}>⚡ Amplify NVIDIA AI platform sense</button><button onClick={() => setFeedback("Highlight technical product leadership")}>◉ Highlight technical product leadership</button></div></div>
-            {chatMessages.map((message, index) => <div className={`amelia-chat-message ${message.role}`} key={`${message.role}-${index}`}>{message.text}</div>)}
-            {busy && <div className="amelia-chat-bubble">Working through your note...</div>}
-            <div className="amelia-chat-row"><input className="amelia-input" placeholder="Ask Amelia to refine or rewrite..." value={feedback} onChange={(e) => setFeedback(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendFeedback()} /><button className="amelia-send" onClick={sendFeedback} disabled={busy || !feedback.trim()} aria-label="Send refinement">↑</button></div>
-          </div>
-          <nav className="amelia-bottom-nav"><button className="active">▣<small>CHAT</small></button><button onClick={() => navigate(`/applications/${application.id}`)}>♧<small>DOCUMENT</small></button><button>⚙<small>ATS SCORE</small></button><button>▤<small>VAULT</small></button></nav>
+        <section className="intake-results" aria-label="Resume conversation">
+          <h2>Your resume with Amelia</h2>
+          <p role="status">{application.status === "ready" ? "Your resume is ready to review." : application.status === "error" ? "Generation could not finish. Please try again." : "Amelia is preparing your resume…"}</p>
+          {application.status === "ready" && <a href={exportUrl(application.id, "resume.pdf")} download>Download resume PDF</a>}
+          {application.status === "ready" && <button onClick={() => navigate(`/applications/${application.id}`)}>Review and edit resume</button>}
+          {chatMessages.map((message, index) => <p key={index}><strong>{message.role === "user" ? "You" : "Amelia"}:</strong> {message.text}</p>)}
+          <div className="amelia-chat-row"><input className="amelia-input" aria-label="Refinement message" placeholder="Ask Amelia to refine or rewrite..." value={feedback} onChange={(e) => setFeedback(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendFeedback()} /><button className="amelia-send" onClick={sendFeedback} disabled={busy || application.status !== "ready" || !feedback.trim()} aria-label="Send refinement">↑</button></div>
         </section>
       )}
+
     </main>
   );
 }

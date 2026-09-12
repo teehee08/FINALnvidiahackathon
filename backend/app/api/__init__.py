@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import applications, profiles, settings, setup, templates
+from . import applications, profiles, settings, setup, templates, vault
 
 api_router = APIRouter(prefix="/api")
 
@@ -18,3 +18,5 @@ api_router.include_router(applications.router)
 api_router.include_router(settings.router)
 api_router.include_router(setup.router)
 api_router.include_router(templates.router)
+
+api_router.include_router(vault.router)

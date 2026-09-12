@@ -168,3 +168,12 @@ def get_resume(a: Application) -> ResumeDoc | None:
 
 def set_resume(a: Application, r: ResumeDoc) -> None:
     a.resume_json = r.model_dump_json()
+
+
+class VaultDocument(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    filename: str
+    category: str
+    content: bytes
+    text: str
+    created_at: datetime = Field(default_factory=_utcnow)

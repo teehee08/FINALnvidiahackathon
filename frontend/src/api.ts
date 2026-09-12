@@ -252,3 +252,22 @@ export function exportUrl(id: number, kind: ExportKind): string {
 export function templatePreviewUrl(name: TemplateName): string {
   return `${API}/templates/preview/${name}`;
 }
+
+export interface VaultDocument {
+  id: string;
+  filename: string;
+  category: string;
+  created_at: string;
+  original_available: boolean;
+}
+
+export function listVaultDocuments(): Promise<VaultDocument[]> {
+  return request("/vault");
+}
+
+export function saveVaultDocument(file: File, category: string): Promise<VaultDocument & { text: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("category", category);
+  return request("/vault", { method: "POST", body: form });
+}
