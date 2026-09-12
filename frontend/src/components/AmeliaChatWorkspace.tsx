@@ -35,7 +35,7 @@ export default function AmeliaChatWorkspace(props: Props) {
   const steps = [{ label: "Source Docs", ready: props.sources.length > 0 }, { label: "CV Draft", ready: Boolean(props.resumeFile) }, { label: "Target JD", ready: targetReady }];
 
   return (
-    <section className="amelia-intake" aria-label="Chat resume workspace">
+    <section className="amelia-intake" aria-label="Resume builder workspace">
       <header className="intake-hero">
         <div>
           <span className="intake-pill">Say hello to your AI Resume Co-Pilot</span>

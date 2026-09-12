@@ -4,11 +4,11 @@ import {
   buildProfile,
   createApplications,
   createProfile,
-  exportUrl,
   getApplication,
   listProfiles,
   listVaultDocuments,
   saveVaultDocument,
+  removeVaultDocument,
   pasteJobText,
   regenerate,
   uploadDocument,
@@ -16,6 +16,7 @@ import {
 import type { VaultDocument } from "../api";
 import type { ApplicationDetail, ProfileSummary } from "../types";
 
+import AmeliaConversation from "../components/AmeliaConversation";
 import AmeliaChatWorkspace from "../components/AmeliaChatWorkspace";
 import type { SourceFile } from "../components/AmeliaChatWorkspace";
 
@@ -37,14 +38,14 @@ function AmeliaLogo() {
   );
 }
 
-function StepRail({ step, onSelect }: { step: FlowStep; onSelect: (step: FlowStep) => void }) {
+function SidebarNavigation({ step, onSelect }: { step: FlowStep; onSelect: (step: FlowStep) => void }) {
   return (
-    <nav className="amelia-steps" aria-label="Resume workspace">
-      {([{ step: 2, label: "Build resume" }, { step: 3, label: "Chat" }, { step: 4, label: "Document Vault" }] as const).map((item) => (
-        <button type="button" className={`amelia-step ${item.step === step ? "is-current" : ""}`}
+    <nav className="amelia-sidebar-nav" aria-label="Resume workspace">
+      {([{ step: 2, label: "Build Resume", icon: "▧" }, { step: 3, label: "Chat", icon: "▤" }, { step: 4, label: "Document Vault", icon: "▱" }] as const).map((item) => (
+        <button type="button" className={item.step === step ? "is-current" : ""}
           key={item.step} aria-current={item.step === step ? "page" : undefined}
           onClick={() => onSelect(item.step)}>
-          <small>{item.label}</small>
+          <span aria-hidden="true">{item.icon}</span><small>{item.label}</small>
         </button>
       ))}
     </nav>
@@ -69,6 +70,9 @@ export default function AmeliaFlowScreen() {
   const [feedback, setFeedback] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [documents, setDocuments] = useState<VaultDocument[]>([]);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [resumeVaultId, setResumeVaultId] = useState<string | null>(null);
+  const [jobVaultId, setJobVaultId] = useState<string | null>(null);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,9 +120,10 @@ export default function AmeliaFlowScreen() {
     try {
       const saved = await saveVaultDocument(file, category);
       setDocuments((items) => [saved, ...items]);
-      if (category === "Resume") { setResumeFile(file); setResumeText(saved.text); }
+      if (category === "Resume") { setResumeFile(file); setResumeText(saved.text); setResumeVaultId(saved.id); }
       else {
         setJobFile(file);
+        setJobVaultId(saved.id);
         setJobText(saved.text);
       }
     } catch (e) {
@@ -126,6 +131,19 @@ export default function AmeliaFlowScreen() {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function removeDocument(id: string) {
+    setRemovingId(id);
+    setError(null);
+    try {
+      await removeVaultDocument(id);
+      setDocuments((items) => items.filter((item) => item.id !== id));
+      setSources((items) => items.filter((item) => item.id !== id));
+      if (id === resumeVaultId) { setResumeFile(null); setResumeText(""); setResumeVaultId(null); }
+      if (id === jobVaultId) { setJobFile(null); setJobText(""); setJobVaultId(null); }
+    } catch (e) { setError(String(e)); }
+    finally { setRemovingId(null); }
   }
 
   async function saveSources(files: File[]) {
@@ -250,11 +268,17 @@ export default function AmeliaFlowScreen() {
 
   return (
     <main className="amelia-shell amelia-workspace">
-      <header className="amelia-topbar">
-        <button className="amelia-wordmark" onClick={() => setStep(2)}><AmeliaLogo /></button>
-        <button className="amelia-quiet" onClick={() => { sessionStorage.removeItem("amelia-unlocked"); setUnlocked(false); }}>Lock</button>
-      </header>
-      <StepRail step={step} onSelect={(previous) => { setStep(previous); setError(null); }} />
+      <aside className="amelia-sidebar" aria-label="Workspace sidebar">
+        <button className="amelia-wordmark" aria-label="Amelia home" onClick={() => setStep(2)}><AmeliaLogo /></button>
+        <p className="amelia-sidebar-caption">CAREER CO-PILOT</p>
+        <SidebarNavigation step={step} onSelect={(next) => { setStep(next); setError(null); }} />
+        <div className="amelia-sidebar-footer">
+          <span>YOUR CAREER WORKSPACE</span>
+          <small>Documents saved locally</small>
+          <button onClick={() => { sessionStorage.removeItem("amelia-unlocked"); setUnlocked(false); }}>Lock workspace</button>
+        </div>
+      </aside>
+      <div className="amelia-workspace-content">
       {error && <div className="amelia-error amelia-alert">{error}</div>}
 
       {step === 4 && (
@@ -272,9 +296,14 @@ export default function AmeliaFlowScreen() {
               {documents.map((document) => (
                 <li key={document.id}>
                   <div><strong>{document.filename}</strong><small>{document.category} · {new Date(document.created_at).toLocaleDateString()}</small></div>
-                  <a href={`/api/vault/${document.id}/download`} download>
-                    {document.original_available ? "Download" : "Download saved text"}
-                  </a>
+                  <div className="amelia-vault-actions">
+                    <a className="amelia-vault-download" href={`/api/vault/${document.id}/download`} download aria-label={`Download ${document.filename}${document.original_available ? "" : " as saved text"}`} title={document.original_available ? "Download file" : "Download saved text"}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" /></svg>
+                    </a>
+                    <button className="amelia-vault-remove" disabled={removingId !== null} onClick={() => { void removeDocument(document.id); }} aria-label={`Remove ${document.filename}`} title="Remove file">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -282,7 +311,7 @@ export default function AmeliaFlowScreen() {
         </section>
       )}
 
-      {step === 3 && (
+      {step === 2 && (
         <AmeliaChatWorkspace sources={sources} resumeFile={resumeFile} jobFile={jobFile}
           jobText={jobText} jobUrl={jobUrl} targetTitle={targetTitle} wordCount={wordCount}
           busy={busy || Boolean(application && !["ready", "error", "not_started"].includes(application.status))} uploading={uploading}
@@ -294,44 +323,17 @@ export default function AmeliaFlowScreen() {
           onBuild={() => { void buildResume(); }} />
       )}
 
-      {step === 2 && (
-        <section className="amelia-resume-grid">
-          <div>
-            <p className="amelia-eyebrow">BUILD YOUR RESUME</p>
-            <h1>Give Amelia<br />the raw material.</h1>
-            <p className="amelia-muted">Upload the resume you have today and the job description you want to win. The generator selects from your evidence and keeps the write path truthful.</p>
-          </div>
-          <div className="amelia-panel amelia-form-panel">
-            <label className="amelia-upload" htmlFor="resume-file">
-              <span className="amelia-upload-icon">↑</span>
-              <strong>{resumeFile ? resumeFile.name : "Upload your resume"}</strong>
-              <small>PDF, DOCX, or TXT</small>
-            </label>
-            <input id="resume-file" type="file" accept=".pdf,.docx,.txt" disabled={uploading || busy} onChange={(e) => { void saveUpload(e.target.files?.[0] ?? null, "Resume"); e.target.value = ""; }} hidden />
-            <label className="amelia-upload" htmlFor="job-file">
-              <span className="amelia-upload-icon">↑</span>
-              <strong>{jobFile ? jobFile.name : "Upload the job description"}</strong>
-              <small>Or paste it below</small>
-            </label>
-            <input id="job-file" type="file" accept=".txt,.pdf,.docx" disabled={uploading || busy} onChange={(e) => { void saveUpload(e.target.files?.[0] ?? null, "Job description"); e.target.value = ""; }} hidden />
-            <input className="amelia-input" placeholder="https://company.com/jobs/target-role" value={jobUrl} onChange={(e) => setJobUrl(e.target.value)} />
-            <textarea className="amelia-textarea" placeholder="Paste the full job description here..." value={jobText} onChange={(e) => setJobText(e.target.value)} />
-            <button className="amelia-primary" onClick={buildResume} disabled={busy || uploading}>{uploading ? "Saving document..." : busy ? "Building resume..." : "Synthesize my resume →"}</button>
-          </div>
-        </section>
+      {step === 3 && (
+        <AmeliaConversation logo={<AmeliaLogo />} application={application} targetTitle={targetTitle}
+          files={[resumeFile, ...sources.map((source) => source.file), jobFile].filter((file): file is File => file !== null)}
+          wordCount={wordCount} rawText={resumeText || sources[0]?.text || ""}
+          feedback={feedback} messages={chatMessages} busy={busy}
+          onFeedback={setFeedback} onSend={() => { void sendFeedback(); }}
+          onBuild={() => setStep(2)} onVault={() => setStep(4)}
+          onDocument={() => { if (application) navigate(`/applications/${application.id}`); }} />
       )}
 
-      {step === 3 && application && (
-        <section className="intake-results" aria-label="Resume conversation">
-          <h2>Your resume with Amelia</h2>
-          <p role="status">{application.status === "ready" ? "Your resume is ready to review." : application.status === "error" ? "Generation could not finish. Please try again." : "Amelia is preparing your resume…"}</p>
-          {application.status === "ready" && <a href={exportUrl(application.id, "resume.pdf")} download>Download resume PDF</a>}
-          {application.status === "ready" && <button onClick={() => navigate(`/applications/${application.id}`)}>Review and edit resume</button>}
-          {chatMessages.map((message, index) => <p key={index}><strong>{message.role === "user" ? "You" : "Amelia"}:</strong> {message.text}</p>)}
-          <div className="amelia-chat-row"><input className="amelia-input" aria-label="Refinement message" placeholder="Ask Amelia to refine or rewrite..." value={feedback} onChange={(e) => setFeedback(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendFeedback()} /><button className="amelia-send" onClick={sendFeedback} disabled={busy || application.status !== "ready" || !feedback.trim()} aria-label="Send refinement">↑</button></div>
-        </section>
-      )}
-
+      </div>
     </main>
   );
 }

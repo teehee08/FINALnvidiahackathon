@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import AmeliaFlowScreen from "./AmeliaFlowScreen";
-import { listProfiles, listVaultDocuments, saveVaultDocument } from "../api";
+import { listProfiles, listVaultDocuments, saveVaultDocument, removeVaultDocument } from "../api";
 
 vi.mock("../api", () => ({
   listProfiles: vi.fn(),
   listVaultDocuments: vi.fn(),
   saveVaultDocument: vi.fn(),
+  removeVaultDocument: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -25,24 +26,25 @@ it("opens directly to the resume form and preserves uploads when navigating to t
   expect(screen.queryByText(/Secure entry/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Bring the evidence/)).not.toBeInTheDocument();
   const file = new File(["Resume"], "my-resume.txt", { type: "text/plain" });
-  fireEvent.change(screen.getByLabelText(/Upload your resume/), { target: { files: [file] } });
+  fireEvent.change(screen.getByLabelText(/Upload existing resume baseline/), { target: { files: [file] } });
   await screen.findByText("my-resume.txt");
+  fireEvent.click(screen.getByRole("button", { name: "Raw Text Input" }));
   fireEvent.change(screen.getByPlaceholderText("Paste the full job description here..."), {
     target: { value: "Product manager role" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Document Vault" }));
-  expect(await screen.findByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/vault/file-1/download");
-  fireEvent.click(screen.getByRole("button", { name: "Build resume" }));
+  expect(await screen.findByRole("link", { name: "Download my-resume.txt" })).toHaveAttribute("href", "/api/vault/file-1/download");
+  fireEvent.click(screen.getByRole("button", { name: "Build Resume" }));
   expect(screen.getByText("my-resume.txt")).toBeInTheDocument();
   expect(screen.getByPlaceholderText("Paste the full job description here...")).toHaveValue("Product manager role");
   fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-  expect(screen.getByRole("heading", { name: "Build your target-role resume in 3 simple steps" })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Chat with Amelia" })).toBeInTheDocument();
 });
 
 it("shows an upload failure without pretending the file was saved", async () => {
   vi.mocked(saveVaultDocument).mockRejectedValue(new Error("Upload failed"));
   render(<MemoryRouter><AmeliaFlowScreen /></MemoryRouter>);
-  fireEvent.change(screen.getByLabelText(/Upload your resume/), {
+  fireEvent.change(screen.getByLabelText(/Upload existing resume baseline/), {
     target: { files: [new File(["x"], "failed.txt")] },
   });
   await waitFor(() => expect(screen.getByText(/Upload failed/)).toBeInTheDocument());
@@ -55,17 +57,17 @@ it("shows the welcome branding and goes straight to build after unlocking", asyn
   expect(screen.getByRole("heading", { name: "Your Strategic Career & Resume Builder" })).toBeInTheDocument();
   fireEvent.change(screen.getByPlaceholderText("Enter Password"), { target: { value: "Home" } });
   fireEvent.click(screen.getByRole("button", { name: /Log in to Amelia/ }));
-  expect(screen.getByLabelText(/Upload your resume/)).toBeInTheDocument();
+  expect(screen.getByLabelText(/Upload existing resume baseline/)).toBeInTheDocument();
   await waitFor(() => expect(listProfiles).toHaveBeenCalled());
 });
 
-it("tracks uploaded coursework in the new Chat layout and can remove it from the package", async () => {
+it("tracks uploaded coursework in the resume builder and can remove it from the package", async () => {
   vi.mocked(saveVaultDocument).mockResolvedValue({
     id: "file-9", filename: "project.md", category: "Coursework",
     created_at: "2026-09-12T12:00:00Z", original_available: true, text: "Built a useful application",
   });
   render(<MemoryRouter><AmeliaFlowScreen /></MemoryRouter>);
-  fireEvent.click(screen.getByRole("button", { name: "Chat", exact: true }));
+  expect(screen.getByRole("button", { name: "Build Resume" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByText("0 of 3 steps completed")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Curate & Elevate/ })).toBeDisabled();
   fireEvent.change(screen.getByLabelText("Upload raw files and coursework"), {
@@ -78,4 +80,14 @@ it("tracks uploaded coursework in the new Chat layout and can remove it from the
   fireEvent.click(screen.getByRole("button", { name: "Remove project.md from this resume" }));
   expect(screen.queryByText("project.md")).not.toBeInTheDocument();
   expect(screen.getByText("0 of 3 steps completed")).toBeInTheDocument();
+});
+
+it("removes a vault entry only after the API succeeds", async () => {
+  vi.mocked(listVaultDocuments).mockResolvedValue([{ id: "file-3", filename: "notes.txt", category: "Coursework", created_at: "2026-09-12T12:00:00Z", original_available: true }]);
+  vi.mocked(removeVaultDocument).mockResolvedValue({ removed: "file-3" });
+  render(<MemoryRouter><AmeliaFlowScreen /></MemoryRouter>);
+  fireEvent.click(screen.getByRole("button", { name: "Document Vault" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove notes.txt" }));
+  await waitFor(() => expect(screen.queryByText("notes.txt")).not.toBeInTheDocument());
+  expect(removeVaultDocument).toHaveBeenCalledWith("file-3");
 });

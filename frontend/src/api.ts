@@ -271,3 +271,7 @@ export function saveVaultDocument(file: File, category: string): Promise<VaultDo
   form.append("category", category);
   return request("/vault", { method: "POST", body: form });
 }
+
+export function removeVaultDocument(id: string): Promise<{ removed: string }> {
+  return request(`/vault/${encodeURIComponent(id)}`, { method: "DELETE" });
+}

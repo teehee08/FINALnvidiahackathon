@@ -69,3 +69,23 @@ def download(document_id: str, session: Session = Depends(get_session)):
         media_type="application/octet-stream" if original else "text/plain",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}"},
     )
+
+
+@router.delete("/vault/{document_id}")
+def remove(document_id: str, session: Session = Depends(get_session)):
+    prefix, _, raw_id = document_id.partition("-")
+    if prefix not in ("file", "source") or not raw_id.isdigit():
+        raise HTTPException(404, "Document not found")
+    doc = session.get(VaultDocument if prefix == "file" else SourceDocument, int(raw_id))
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    if prefix == "file":
+        # Remove extracted copies too, so the same upload cannot reappear as legacy text.
+        copies = session.exec(select(SourceDocument).where(
+            SourceDocument.filename == doc.filename, SourceDocument.text == doc.text
+        )).all()
+        for copy in copies:
+            session.delete(copy)
+    session.delete(doc)
+    session.commit()
+    return {"removed": document_id}
